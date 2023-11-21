@@ -1,5 +1,7 @@
 const fs = require("fs");
-const crypto = require('crypto');
+const crypto = require("crypto");
+const util = require("util");
+const scrypt = util.promisify(crypto.scrypt);
 
 class usersRepository {
   constructor(filename) {
@@ -27,28 +29,49 @@ class usersRepository {
 
   async create(attributes) {
     attributes.id = this.randomID();
+
+    //hash + salt(ing) password
+    const salt = crypto.randomBytes(8).toString("hex");
+    //scrypt takes password and salt and returns hashed buffer
+    const hashBuf = await scrypt(attributes.password, salt, 64);
     const data = await this.getAll();
-    data.push(attributes);
+
+    const record = {
+      ...attributes,
+      password: `${hashBuf.toString("hex")}.${salt}`,
+    };
+    data.push(record);
     await this.writeAll(data);
+    return record;
+  }
+
+  async matchPassword(saved, supplied) {
+    const hashAndSalt = saved.split(".");
+    const hashed = hashAndSalt[0];
+    const salt = hashAndSalt[1];
+
+    const hashedSuppliedBuf = await scrypt(supplied, salt, 64);
+
+    return hashed === hashedSuppliedBuf.toString("hex");
   }
 
   async writeAll(data) {
     await fs.promises.writeFile(this.filename, JSON.stringify(data, null, 2));
   }
 
-  randomID(){
+  randomID() {
     //generates random 4 bytes and converts them to a string in hex format
-    return crypto.randomBytes(4).toString('hex');
+    return crypto.randomBytes(4).toString("hex");
   }
 
-  async getOne(id){
+  async getOne(id) {
     const data = await this.getAll();
     return data.find((user) => {
       return user.id === id;
-    })
+    });
   }
 
-  async delete(id){
+  async delete(id) {
     const data = await this.getAll();
     const filteredData = data.filter((record) => {
       return record.id !== id;
@@ -56,30 +79,32 @@ class usersRepository {
     await this.writeAll(filteredData);
   }
 
-  async update(id,attributes){
+  async update(id, attributes) {
     const data = await this.getAll();
-    const record = data.find((record) => {return record.id === id});
-    if(!record){
+    const record = data.find((record) => {
+      return record.id === id;
+    });
+    if (!record) {
       throw new Error(`Can't find a user with given id: ${id}`);
     }
-    Object.assign(record,attributes);
+    Object.assign(record, attributes);
     await this.writeAll(data);
   }
 
-  async getOneBy(filters){
+  async getOneBy(filters) {
     const data = await this.getAll();
-    for(let user of data){
+    for (let user of data) {
       let found = true;
-      for(let key in filters){
-        if(user[key] !== filters[key]){
+      for (let key in filters) {
+        if (user[key] !== filters[key]) {
           found = false;
         }
       }
-      if(found == true){
+      if (found == true) {
         return user;
       }
     }
   }
 }
 
-module.exports = new usersRepository('users.json');
+module.exports = new usersRepository("users.json");
