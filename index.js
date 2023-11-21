@@ -1,5 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const usersRepo = require('./repositories/users');
 const app = express();
 
 app.get("/", (req, res) => {
@@ -27,9 +28,19 @@ app.get("/", (req, res) => {
 
 
 //bodyParser acts as a middleware in express; first run this and then run the callback of the made request
-app.post("/", bodyParser.urlencoded({extended : true}), (req, res) => {
-  console.log(req.body);
+app.post("/", bodyParser.urlencoded({extended : true}), async (req, res) => {
+  const {email,password,confirmPassword} = req.body;
+  const existingUser = await usersRepo.getOneBy({email});
+  if(existingUser){
+    res.send("Email already exists");
+  }
+
+  if(password !== confirmPassword){
+    res.send("Passwords must match");
+  }
+
   //Response to send when request is made
+  usersRepo.create({email,password});
   res.send("Account Created");
 });
 
